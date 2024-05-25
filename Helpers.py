@@ -33,7 +33,7 @@ def split_data(X, Y, P, W):
 
     # Split Y into labels for labeled and unlabeled instances
     Y_l = Y[:num_labeled].copy()
-    Y_u = Y[num_labeled:]
+    # Y_u = Y[num_labeled:]
 
     # Calculate the number of mislabeled instances
     num_mislabeled = int(len(Y_l) * W / 100)

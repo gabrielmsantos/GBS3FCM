@@ -441,7 +441,7 @@ def AS3FCM_prod(trial):
     # Shuffle the data, for distinct results
     X, Y_hat = extract_features_and_labels('./dermatology/dermatology.data', shuffle_data=True)
     Y_hat = Y_hat - 1
-    mislabeling_percentage = 0
+    mislabeling_percentage = 30
     X_l, X_u, Y_l = split_data(X, Y_hat, 20, mislabeling_percentage)
     # Example usage
     lambda1_list = [.001, .01, .1, 1, 10, 100]
