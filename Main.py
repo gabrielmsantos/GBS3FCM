@@ -439,7 +439,7 @@ def AS3FCM_hml():
 
 def AS3FCM_prod(trial):
     # Shuffle the data, for distinct results
-    X, Y_hat = extract_features_and_labels('./liver+disorders/bupa.data', shuffle_data=True)
+    X, Y_hat = extract_features_and_labels('./dermatology/dermatology.data', shuffle_data=True)
     Y_hat = Y_hat - 1
     mislabeling_percentage = 0
     X_l, X_u, Y_l = split_data(X, Y_hat, 20, mislabeling_percentage)

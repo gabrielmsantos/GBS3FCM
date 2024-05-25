@@ -4,11 +4,17 @@ from sklearn.utils import shuffle
 
 def extract_features_and_labels(file_path, shuffle_data=True):
     # Read the data file
-    data = pd.read_csv(file_path, header=None)
+    data_raw = pd.read_csv(file_path, header=None)
+
+    # Remove rows with missing values
+    data = data_raw.replace('?', pd.NA).dropna()
 
     # Shuffle the data
     if shuffle_data:
         data = shuffle(data)
+
+    # Convert all columns to numeric, non-convertible values will be replaced with NaN
+    data = data.apply(pd.to_numeric, errors='coerce')
 
     # Separate the features and the labels
     X = data.iloc[:, :-1].values  # All columns except the last
