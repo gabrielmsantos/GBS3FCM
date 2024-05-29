@@ -1,17 +1,74 @@
-import math
-
 import numpy as np
 import cvxopt
 from math import sqrt
 from scipy.spatial import distance
-from scipy.spatial.distance import pdist
-
-from Databases import get_dermatology, get_bupa, get_diabetes, get_waveform, get_gauss50
 from Helpers import split_data, extract_features_and_labels
-from FCMOpt import initialize_U_FCM, initialize_ULabeled, initialize_V, initialize_S, initialize_V_KM, update_U_labeled
 from sklearn.neighbors import KNeighborsClassifier, kneighbors_graph, NearestNeighbors
 
 E = 10e-10
+
+
+def initialize_V(X_l, Y_l, labels):
+    unique_labels = np.unique(labels)
+    # Determine the number of classes
+    # n_classes = unique_labels.max() + 1  # Assuming labels are 0-indexed
+    n_classes = unique_labels.size
+    # Create an empty array of shape (n_classes, n_features)
+    centers = np.zeros((n_classes, X_l.shape[1]))
+    for label in unique_labels:
+        # Compute the mean for each class and assign it to the correct position in the array
+        centers[label] = np.nan_to_num(X_l[Y_l == label].mean(axis=0))
+    return centers
+
+
+def initialize_ULabeled(n_clusters, Y_l):
+    U_l = np.zeros((n_clusters, len(Y_l)))  # Initialize the U matrix
+    for k in range(len(Y_l)):
+        label = Y_l[k]  # Label of instance k
+        U_l[label, k] = 1  # Set u_ik = 1
+    return U_l
+
+
+def initialize_U_Fcm(X, V, m=2):
+    n, c = X.shape[0], V.shape[0]  # n data points, c clusters
+    U = np.zeros((c, n))  # Initialize the U matrix
+
+    # Compute the distance matrix between each data point and each cluster center
+    distances = np.linalg.norm(X[:, np.newaxis, :] - V[np.newaxis, :, :], axis=2)  # shape (n, c)
+    distances[distances < E] = E  # Avoid division by zero
+
+    # Compute the membership matrix U
+    power = 2 / (m - 1)
+    inv_distances = 1 / distances
+    inv_distances_power = inv_distances ** power
+
+    for i in range(c):
+        U[i, :] = inv_distances_power[:, i] / np.sum(inv_distances_power, axis=1)
+
+    return np.nan_to_num(U)
+
+
+
+def initialize_U(X, V, m=2):
+    n, c = X.shape[0], V.shape[0]  # n data points, c clusters
+    U = np.zeros((c, n))  # Initialize the U matrix
+    for k in range(n):  # Loop over clusters
+        for i in range(c):  # Loop over data points
+            internal_sum = 0
+            d_ik = np.linalg.norm(X[k] - V[i])  # Euclidean distance from X[k] to V[i]
+            if d_ik < E:
+                d_ik = E
+            for j in range(c):
+                d_jk = np.linalg.norm(X[k] - V[j])  # Euclidean distance from X[k] to V[j]
+                if d_jk < E:
+                    d_jk = E
+                internal_sum += np.nan_to_num((d_ik / d_jk) ** (2 / (m - 1)))
+            U[i, k] = np.nan_to_num(1 / internal_sum)
+    return U
+
+
+def initialize_S(size):
+    return np.full(size, 0.5)
 
 
 def initialize_F(X_l, Y_l, labels):
@@ -35,6 +92,31 @@ def update_u(X_l, X_un, V, W, U_prev_l, U_prev_un, s, lambda1, lambda2, F):
     U_l = update_U_labeled(X_l, V, W, U_prev_un, s, lambda1, lambda2, F)
     U_un = update_U_unlabeled(X_un, V, W, U_prev_l, s, lambda2, F)
     return U_l, U_un
+
+
+def update_U_labeled(X_l, V, W, U_prev_un, s, lambda1, lambda2, F):
+    n, c = X_l.shape[0], V.shape[0]  # n data points, c clusters
+    U_l = np.zeros((c, n))  # initialize the U matrix
+
+    # compute matrix P (n  x c) and Q (n x c)
+    P = np.zeros((c, n))
+    Q = np.zeros((c, n))
+
+    for k in range(n):  # Loop over data points
+        for i in range(c):  # Loop over clusters
+            d_ik = np.linalg.norm(X_l[k] - V[i])  # Euclidean distance from X[k] to V[i]
+            if d_ik < E:
+                d_ik = E
+            sum_Wkr_ur = np.dot(W[k, :], U_prev_un[i, :])  # Sum over all r, skipping the current i
+            P[i, k] = lambda1 * s[k] * F[i, k] * d_ik ** 2 + lambda2 * (2 / (s[k] + 1) - 1) * sum_Wkr_ur
+
+            Q[i, k] = d_ik ** 2 + lambda1 * s[k] * d_ik ** 2 + lambda2 * (2 / (s[k] + 1) - 1) * np.sum(W[k, :])
+
+    for k in range(n):  # Loop over data points
+        for i in range(c):  # Loop over clusters
+            U_l[i, k] = (P[i, k] + (1 - np.sum(P[:, k] / Q[:, k])) / np.sum(1 / Q[:, k])) / Q[i, k]
+
+    return U_l
 
 
 def update_U_unlabeled(X_u, V, W, U_prev_l, s, lambda2, F):
@@ -187,7 +269,7 @@ def compute_Ja(W, X_l, X_un, U_un, U_l, V, S, F, lambda1, lambda2):
 
         sum3 += internal_sum1 + internal_sum2
 
-    return  sum1 + lambda1 * sum2 + lambda2 * sum3
+    return sum1 + lambda1 * sum2 + lambda2 * sum3
 
 
 def compute_distances(data):
@@ -199,17 +281,9 @@ def compute_distances(data):
     return l_distances
 
 
-def compute_distances2(data):
-    pairwise_distances = pdist(data, metric='euclidean')
-    return pairwise_distances
-
-
 def compute_average_distance(data):
-    # distances = compute_distances(data)
-    # total_distance = sum(dist[0] for dist in distances)
-
-    distances = compute_distances2(data)
-    total_distance = sum(dist for dist in distances)
+    distances = compute_distances(data)
+    total_distance = sum(dist[0] for dist in distances)
     average_distance = total_distance / len(distances)
     return average_distance
 
@@ -242,6 +316,35 @@ def compute_CA(y, y_hat):
     print(f'Correct predictions:  {np.sum(correct_predictions)}')
     CA = np.sum(correct_predictions) / n  # Compute classification accuracy
     return CA
+
+
+def construct_graph(X_l, X_u, k):
+    X = np.concatenate((X_l, X_u), axis=0)
+    connectivity = kneighbors_graph(X, n_neighbors=k, include_self=False)
+    return connectivity.toarray()
+
+
+def compute_safety_degrees_OLD(X_l, X_u, U_l, U_un, F, k):
+    X = np.concatenate((X_l, X_u), axis=0)
+    connectivity = kneighbors_graph(X, n_neighbors=k, include_self=False).toarray()
+    S = np.zeros(X_l.shape[0])
+
+    for i in range(X_l.shape[0]):
+        neighbors = np.where(connectivity[i])[0]
+        labeled_neighbors = neighbors[neighbors < X_l.shape[0]]
+        unlabeled_neighbors = neighbors[neighbors >= X_l.shape[0]] - X_l.shape[0]
+
+        if len(unlabeled_neighbors) == 0:
+            S[i] = 1
+            continue
+
+        consistency = 0
+        for neighbor in unlabeled_neighbors:
+            consistency += np.linalg.norm(U_un[:, neighbor] - F[:, i])
+
+        S[i] = 1 / (1 + consistency / len(unlabeled_neighbors))
+
+    return S
 
 
 def compute_safety_degrees(X_l, X_u, U_un, F, N_pu):
@@ -277,29 +380,30 @@ def compute_safety_degrees(X_l, X_u, U_un, F, N_pu):
     return S
 
 
-def compute_N_pu(X_l, k, min_value=0, max_value=math.inf):
+def compute_N_pu(X_l, k):
     knn = KNeighborsClassifier(n_neighbors=k)
     knn.fit(X_l, np.zeros(X_l.shape[0]))
     distances, _ = knn.kneighbors(X_l)
     N_pu = np.round(np.mean(distances, axis=1)).astype(int)
-
-    N_pu = np.clip(N_pu, min_value, max_value).astype(int)
-
     return N_pu
 
 
-def step(x, a):
-    if x > a:
-        return 1
-    return 0
+def AS3FCM(X_l, X_u, Y_l, Y_hat, N_pu, W, lambda1, lambda2, sigma, eta, max_iter, gb, m=2):
 
+    # Step 2: Initialize cluster variables
+    # V = initialize_V(X_l, Y_l)
+    V = initialize_V(X_l, Y_l, Y_hat)
+    # U_l = initialize_U(X_l, V, m)
+    U_l = initialize_ULabeled(V.shape[0], Y_l)
+    U_un = initialize_U(X_u, V, m)
+    U_un2 = initialize_U2(X_u, V, m)
+    S = initialize_S(X_l.shape[0])
+    F = initialize_F(X_l, Y_l, Y_hat)
 
-def X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation_threshold, eta, max_iter, gb):
+    # Concatenating labeled and unlabeled data
+    # X = np.concatenate((X_l, X_u), axis=0)
     previous_Ja = 0
     # Main iteration loop
-    t = 0
-
-    lambda2_orig = lambda2
     for t in range(max_iter):
         # Step 4: Update u
         U_l, U_un = update_u(X_l, X_u, V, W, U_l, U_un, S, lambda1, lambda2, F)
@@ -310,11 +414,6 @@ def X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation_
         # Step 6: Update s
         if gb:
             S = compute_safety_degrees(X_l, X_u, U_un, F, N_pu)  # Update S based on local consistency
-            # print(f"Safety degrees: {S}")
-            # update lambda2 based on the activation function, this represents the influence of labeled regularization on unlabeled data
-            lambda2 = lambda2_orig * (lambda1 ** step(np.mean(S), activation_threshold))
-            print(f"Lambda2: {lambda2} and mean(S): {np.mean(S)}")
-
         else:
             S = update_s(X_l, W, U_l, U_un, V, F, lambda1, lambda2)
 
@@ -327,9 +426,6 @@ def X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation_
 
         previous_Ja = current_Ja
 
-
-    print("Stoppped at ITER: " + str(t) + " with AvgS: " + str(np.mean(S)))
-
     # Return the final partition matrix
     return np.concatenate((U_l, U_un), axis=1)
 
@@ -341,63 +437,63 @@ def print_groups(Y_hat, Y_star, filename):
     np.savetxt('output.txt', combined, fmt='%d')
 
 
-def AS3FCM_prod(trial, X, Y_hat, mislabeling_percentage, gb=True):
+# def AS3FCM_hml():
+#     # Step 1: Create a small dataset with 10 data points and known labels
+#     X = np.array([[1, 2], [1, 4], [1, 0], [4, 2], [4, 4], [4, 0], [0, 1], [2, 1], [4, 1], [1, 1]])
+#     Y_hat = np.array([0, 0, 0, 1, 1, 1, 2, 2, 2, 2])
+#
+#     # Step 2: Split the dataset into labeled and unlabeled data
+#     X_l, X_u, Y_l = split_data(X, Y_hat, 50, 0)  # 50% of the data is labeled
+#
+#     # Parameters for AS3FCM
+#     lambda1 = 0.1
+#     lambda2 = 0.1
+#     sigma = compute_average_distance(np.concatenate((X_l, X_u), axis=0))
+#     eta = 0.01
+#     max_iter = 100
+#
+#     # Step 3: Run the AS3FCM function on the dataset
+#     U_star = AS3FCM(X_l, X_u, Y_l, Y_hat, lambda1, lambda2, sigma, eta, max_iter)
+#
+#     # Step 4: Get the predicted labels
+#     Y_star = get_predicted_labels(U_star)
+#
+#     # Step 5: Compare the predicted labels with the known labels and calculate the classification accuracy
+#     CA = compute_CA(Y_hat, Y_star)
+#     print(f"Classification accuracy: {CA}")
+
+
+def AS3FCM_prod(trial, database_filepath, gb=True):
     # Shuffle the data, for distinct results
+    X, Y_hat = extract_features_and_labels(database_filepath, shuffle_data=False)
+    Y_hat = Y_hat - 1
+    mislabeling_percentage = 0
     X_l, X_u, Y_l = split_data(X, Y_hat, 20, mislabeling_percentage)
     # Example usage
     lambda1_list = [.001, .01, .1, 1, 10, 100]
     lambda2_list = [.001, .01, .1, 1, 10, 100]
-    # lambda1_list = [1, 10, 100]
-    # lambda2_list = [1, 10, 100]
+    # lambda1_list = [10, 100, 1000]
+    # lambda2_list = [10, 100, 1000]
     sigma = compute_average_distance(np.concatenate((X_l, X_u), axis=0))
     eta = 0.0001
     max_iter = 100
 
     # Step 1: Constructing the Graph Initialize W if necessary
     if gb:  # Number of nearest neighbors for each labeled instance
-        # N_pu = compute_N_pu(X_l, 150)
-        # N_pu = compute_N_pu(X_l, 5, 5, len(Y_hat))
-        N_pu = compute_N_pu(X_l, 5, 5, 50)
+        N_pu = compute_N_pu(X_l, 5)
     else:
         N_pu = np.full(X_l.shape[0], 5)
     print(f'N_pu: {N_pu}')
     W = compute_weights(X_l, X_u, sigma, N_pu)
 
-    # Step 2: Initialize cluster variables
-    V = initialize_V(X_l, Y_l, Y_hat)
-    # V = initialize_V_KM(X_l, Y_hat) # this is not helping much
-
-    U_l = initialize_ULabeled(V.shape[0], Y_l)
-    U_un = initialize_U_FCM(X_u, V, 2)
-    S = initialize_S(X_l.shape[0])
-    F = initialize_F(X_l, Y_l, Y_hat)
-
     results = ""
     accuracies = []
-    i = 0
-    activation = .6
     # All combinations of lambda1 and lambda2
     for lambda1 in lambda1_list:
         for lambda2 in lambda2_list:
-            i += 1
-            print(f"[{i}]=====================================")
-            print(f"Running for lambda1: {lambda1}, lambda2: {lambda2}")
             # Compute Performance Metrics
-            U_star = X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation, eta, max_iter, gb)
+            U_star = AS3FCM(X_l, X_u, Y_l, Y_hat, N_pu, W, lambda1, lambda2, sigma, eta, max_iter, gb)
             Y_star = get_predicted_labels(U_star)
-
-            # get accuracy for labeled data
-            # Y_star_l = get_predicted_labels(U_star[:, :X_l.shape[0]])
-            CA_l = compute_CA(Y_hat[:X_l.shape[0]], Y_star[:X_l.shape[0]])
-            print(f"Classification accuracy for labeled data for lambda1={lambda1}, lambda2={lambda2}: {CA_l}")
-
-            # get accuracy for unlabeled data
-            # Y_star_un = get_predicted_labels(U_star[:, X_l.shape[0]:])
-            CA_un = compute_CA(Y_hat[X_l.shape[0]:], Y_star[X_l.shape[0]:])
-            print(f"Classification accuracy for unlabeled data for lambda1={lambda1}, lambda2={lambda2}: {CA_un}")
-
-            # get overall accuracy
-            # Y_star = np.concatenate((Y_star_l, Y_star_un))
             CA = compute_CA(Y_hat, Y_star)
             accuracies.append(CA)
             print(f"Classification accuracy for lambda1={lambda1}, lambda2={lambda2}: {CA}")
@@ -417,26 +513,19 @@ def AS3FCM_prod(trial, X, Y_hat, mislabeling_percentage, gb=True):
 
 
 if __name__ == '__main__':
+    # AS3FCM_hml()
     # Run it X times and get the average accuracy
-    num_runs = 20
+    num_runs = 1
     total_accuracy = 0
     gb = True
-    percentages = [0, 5, 10, 15, 20, 25, 30]
-    result_str = ""
-    for mislabeling_percentage in percentages:
-        total_accuracy = 0
-        for i in range(num_runs):
-            X, Y_hat = get_bupa(True)
-            #X, Y_hat = get_gauss50(500, 50)
-            total_accuracy += AS3FCM_prod(i, X, Y_hat, mislabeling_percentage, gb)
-        average_accuracy = total_accuracy / num_runs
+    for i in range(num_runs):
+        total_accuracy += AS3FCM_prod(i, './dermatology/dermatology.data', gb)
+    average_accuracy = total_accuracy / num_runs
 
-        if gb:
-            prefix = 'GB'
-        else:
-            prefix = 'AS'
+    if gb:
+        prefix = 'GB'
+    else:
+        prefix = 'AS'
 
-        result_str += f"[{prefix}-{mislabeling_percentage}] Average accuracy over {num_runs} runs: {average_accuracy}\n"
-        print(f"[{prefix}-{mislabeling_percentage}] Average accuracy over {num_runs} runs: {average_accuracy}")
-    print(result_str)
+    print(f"[{prefix}] Average accuracy over {num_runs} runs: {average_accuracy}")
     print("Done")
