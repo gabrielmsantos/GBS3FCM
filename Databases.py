@@ -8,8 +8,15 @@ from Helpers import extract_features_and_labels
 def get_bupa(shuffle_data=True):
     filepath_bupa = './data/bupa/bupa.data'
     X, Y_hat = extract_features_and_labels(filepath_bupa, shuffle_data)
-    Y_hat = Y_hat - 1
-    return X, Y_hat
+
+    # Transform the last column (DRINKS) into binary labels
+    Y_hat = np.where(X[:, -1] < 3, 0, 1)# The last column (DRINKS)
+
+    # Remove the last column (DRINKS) and the first column (SELECTOR
+    X = X[:, :-1]  # Remove the last column (SELECTOR)
+
+    #Y_hat = Y_hat - 1
+    return X, Y_hat, 'BUPA'
 
 
 def get_dermatology(shuffle_data=True):
@@ -18,7 +25,11 @@ def get_dermatology(shuffle_data=True):
     X = X[:, :-1]  # Remove the last column (age)
     Y_hat = Y_hat - 1
 
-    return X, Y_hat
+    mean = np.mean(X, axis=0)
+    std = np.std(X, axis=0)
+    X = (X - mean) / std
+
+    return X, Y_hat, 'DERMATOLOGY'
 
 
 def get_diabetes(shuffle_data=True):
@@ -34,20 +45,44 @@ def get_diabetes(shuffle_data=True):
     X = data.iloc[:, :-1].values  # All columns except the last
     Y_hat = data.iloc[:, -1].values  # Only the last column
 
-    return X, Y_hat
+    # Standardize the data
+    mean = np.mean(X, axis=0)
+    std = np.std(X, axis=0)
+    X = (X - mean) / std
+
+    return X, Y_hat, 'DIABETES'
 
 
 def get_heart(shuffle_data=True):
     filepath_heart = './data/heart/processed.cleveland.data'
     X, Y_hat = extract_features_and_labels(filepath_heart, shuffle_data)
-    Y_hat = Y_hat - 1
-    return X, Y_hat
+    Y_hat = np.where(Y_hat > 1, 1, Y_hat)
+
+    # Remove the third column
+    # X = np.delete(X, 4, axis=1)
+
+    # Standardize the data
+    mean = np.mean(X, axis=0)
+    std = np.std(X, axis=0)
+    X = (X - mean) / std
+
+    return X, Y_hat, 'HEART'
 
 
 def get_waveform(shuffle_data=True):
     filepath_waveform = './data/waveform/waveform.data'
     X, Y_hat = extract_features_and_labels(filepath_waveform, shuffle_data)
-    return X, Y_hat
+
+    #total = 1000
+    #X = X[:total]
+    #Y_hat = Y_hat[:total]
+
+    # Standardize the data
+    #mean = np.mean(X, axis=0)
+    #std = np.std(X, axis=0)
+    #X = (X - mean) / std
+
+    return X, Y_hat, 'WAVEFORM'
 
 
 def get_wdbc(shuffle_data=True):
@@ -65,10 +100,15 @@ def get_wdbc(shuffle_data=True):
     # Transform diagnosis values: 'M' -> 0, 'B' -> 1
     diagnosis = np.where(diagnosis == 'M', 0, 1)
 
-    return features, diagnosis
+    # Standardize the data
+    mean = np.mean(features, axis=0)
+    std = np.std(features, axis=0)
+    features = (features - mean) / std
+
+    return features, diagnosis, 'WDBC'
 
 
-def get_gauss50(n_samples, n_features=50, shuffle_data=True):
+def get_gauss50(n_samples=1550, n_features=50, shuffle_data=True):
     mean_class1 = np.full(n_features, 0.23)
     mean_class2 = np.full(n_features, -0.23)
     cov = np.eye(n_features)
@@ -82,10 +122,12 @@ def get_gauss50(n_samples, n_features=50, shuffle_data=True):
     if shuffle_data:
         X, Y = shuffle(X, Y)
 
-    return X, Y
+    # Standardize the data
+
+    return X, Y, 'GAUSS50'
 
 
-def get_gauss50x(n_samples, n_features=50, shuffle_data=True):
+def get_gauss50x(n_samples=500, n_features=50, shuffle_data=True):
     mu1 = np.full(n_features, 0.25)
     mu2 = np.full(n_features, -0.25)
     cov = np.eye(n_features)
@@ -99,11 +141,30 @@ def get_gauss50x(n_samples, n_features=50, shuffle_data=True):
     X_class2 = generate_mixture_samples(-mu1, -mu2, cov, n_samples // 2)
 
     X = np.vstack((X_class1, X_class2))
-    Y = np.hstack((np.ones(n_samples // 2), 0 * np.ones(n_samples // 2))).astype(int)
+    Y = np.hstack((np.ones(X_class1.shape[0]), 0 * np.ones(X_class2.shape[0]))).astype(int)
 
     if shuffle_data:
         X, Y = shuffle(X, Y)
 
-    return X, Y
+    mean = np.mean(X, axis=0)
+    std = np.std(X, axis=0)
+    X = (X - mean) / std
+
+    return X, Y, 'GAUSS50x'
 
 
+def select_database(db_name):
+    switcher = {
+        'BUPA': get_bupa,
+        'DERMATOLOGY': get_dermatology,
+        'DIABETES': get_diabetes,
+        'HEART': get_heart,
+        'WAVEFORM': get_waveform,
+        'WDBC': get_wdbc,
+        'GAUSS50': get_gauss50,
+        'GAUSS50x': get_gauss50x
+    }
+    # Get the function from switcher dictionary
+    func = switcher.get(db_name, lambda: "Invalid database name")
+    # Execute the function
+    return func()

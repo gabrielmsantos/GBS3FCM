@@ -15,12 +15,13 @@ def find_max_accuracy(filepath):
     return max_accuracy
 
 
-def compute_average_max_accuracies(directory):
+def compute_average_max_accuracies(directory, prefix):
     max_accuracies = []
-
+    i = 0
     # Iterate through all files in the directory
     for filename in os.listdir(directory):
-        if filename.endswith(".txt"):  # Only process .txt files
+        if prefix in filename and filename.endswith(".txt"):  # Only process .txt files
+            i += 1
             filepath = os.path.join(directory, filename)
             max_accuracy = find_max_accuracy(filepath)
             max_accuracies.append(max_accuracy)
@@ -31,10 +32,17 @@ def compute_average_max_accuracies(directory):
     else:
         average_max_accuracy = 0.0
 
-    return average_max_accuracy
+    return average_max_accuracy, i
 
 
 # Example usage:
-directory = './RES-DIA/R30/'  # Replace with your directory path
-average_max_accuracy = compute_average_max_accuracies(directory)
-print(f"Average accuracy over 20 runs: {average_max_accuracy}")
+db_name = 'wdbc'
+directory = f'./results/VNorm/{db_name}/'  # Replace with your directory path
+percentages = [0, 5, 10, 15, 20, 25, 30]
+for percentage in percentages:
+    prefix = f"_R{percentage}_"
+    average_max_accuracy, num = compute_average_max_accuracies(directory, prefix)
+    print(f"[{db_name}-GB-{percentage}] Average accuracy over {num} runs: {average_max_accuracy}")
+
+#average_max_accuracy = compute_average_max_accuracies(directory)
+#print(f"Average accuracy over 20 runs: {average_max_accuracy}")

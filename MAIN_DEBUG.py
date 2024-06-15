@@ -1,15 +1,15 @@
 import math
-
 import numpy as np
 import cvxopt
+import concurrent.futures
+import Databases
+
 from math import sqrt
 from scipy.spatial import distance
 from scipy.spatial.distance import pdist
-
-from Databases import get_dermatology, get_bupa, get_diabetes, get_waveform, get_gauss50
-from Helpers import split_data, extract_features_and_labels
+from Helpers import split_data
 from FCMOpt import initialize_U_FCM, initialize_ULabeled, initialize_V, initialize_S, initialize_V_KM, update_U_labeled
-from sklearn.neighbors import KNeighborsClassifier, kneighbors_graph, NearestNeighbors
+from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors
 
 E = 10e-10
 
@@ -247,7 +247,7 @@ def compute_CA(y, y_hat):
 def compute_safety_degrees(X_l, X_u, U_un, F, N_pu):
     X = np.concatenate((X_l, X_u), axis=0)
     num_labeled = X_l.shape[0]
-    num_unlabeled = X_u.shape[0]
+    #num_unlabeled = X_u.shape[0]
     S = np.zeros(num_labeled)
 
     for i in range(num_labeled):
@@ -258,7 +258,7 @@ def compute_safety_degrees(X_l, X_u, U_un, F, N_pu):
 
         knn = NearestNeighbors(n_neighbors=k)
         knn.fit(X)
-        distances, neighbors = knn.kneighbors([X_l[i]])
+        _, neighbors = knn.kneighbors([X_l[i]])
         neighbors = neighbors[0]
 
         # Filter out labeled neighbors
@@ -283,9 +283,13 @@ def compute_N_pu(X_l, k, min_value=0, max_value=math.inf):
     distances, _ = knn.kneighbors(X_l)
     N_pu = np.round(np.mean(distances, axis=1)).astype(int)
 
-    N_pu = np.clip(N_pu, min_value, max_value).astype(int)
+    #N_pu = np.clip(N_pu, min_value, max_value).astype(int)
 
-    return N_pu
+    # COMPUTE N_pu based on the average distance (proxy for density estimation) of the labeled data
+    normalized_k = min_value + (max_value - min_value) * (N_pu - np.min(N_pu)) / (np.max(N_pu) - np.min(N_pu))
+    N_pu2 = np.clip(normalized_k, min_value, max_value).astype(int)
+
+    return N_pu2
 
 
 def step(x, a):
@@ -312,7 +316,7 @@ def X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation_
             S = compute_safety_degrees(X_l, X_u, U_un, F, N_pu)  # Update S based on local consistency
             # print(f"Safety degrees: {S}")
             # update lambda2 based on the activation function, this represents the influence of labeled regularization on unlabeled data
-            lambda2 = lambda2_orig * (lambda1 ** step(np.mean(S), activation_threshold))
+            #lambda2 = lambda2_orig *  (lambda1 ** step(np.mean(S), activation_threshold))
             print(f"Lambda2: {lambda2} and mean(S): {np.mean(S)}")
 
         else:
@@ -341,26 +345,46 @@ def print_groups(Y_hat, Y_star, filename):
     np.savetxt('output.txt', combined, fmt='%d')
 
 
-def AS3FCM_prod(trial, X, Y_hat, mislabeling_percentage, gb=True):
+def X3FCM_process_combination(lambda1, lambda2, X_l, X_u, V, U_l, U_un, S, F, N_pu, W, activation, eta, max_iter, gb, Y_hat):
+    # Compute Performance Metrics
+    U_star = X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation, eta, max_iter, gb)
+    Y_star = get_predicted_labels(U_star)
+
+    # get overall accuracy
+    CA = compute_CA(Y_hat, Y_star)
+
+    result_str = f"Classification accuracy for lambda1={lambda1}, lambda2={lambda2}: {CA}\n"
+    print(result_str)
+    return CA, result_str
+
+
+def X3FCM_prod(trial, X, Y_hat, mislabeling_percentage, label, gb=True):
     # Shuffle the data, for distinct results
     X_l, X_u, Y_l = split_data(X, Y_hat, 20, mislabeling_percentage)
     # Example usage
     lambda1_list = [.001, .01, .1, 1, 10, 100]
     lambda2_list = [.001, .01, .1, 1, 10, 100]
-    # lambda1_list = [1, 10, 100]
-    # lambda2_list = [1, 10, 100]
-    sigma = compute_average_distance(np.concatenate((X_l, X_u), axis=0))
     eta = 0.0001
     max_iter = 100
 
     # Step 1: Constructing the Graph Initialize W if necessary
     if gb:  # Number of nearest neighbors for each labeled instance
         # N_pu = compute_N_pu(X_l, 150)
-        # N_pu = compute_N_pu(X_l, 5, 5, len(Y_hat))
-        N_pu = compute_N_pu(X_l, 5, 5, 50)
+        #N_pu = compute_N_pu(X_l, 5, 5, len(Y_hat))
+        N_pu = compute_N_pu(X_l, 5, 10, sqrt(len(Y_hat)))
+        #N_pu = compute_N_pu(X_l, 5, 5, round(0.1 * len(Y_hat)))
+
+        # Remove outliers
+        #outliers = np.where(N_pu == sqrt(len(Y_hat)))
+        #X_l = np.delete(X_l, outliers, axis=0)
+        #Y_l = np.delete(Y_l, outliers)
+        #Y_hat = np.delete(Y_hat, outliers)
+        #N_pu = np.delete(N_pu, outliers)
     else:
         N_pu = np.full(X_l.shape[0], 5)
     print(f'N_pu: {N_pu}')
+
+    sigma = compute_average_distance(np.concatenate((X_l, X_u), axis=0))
     W = compute_weights(X_l, X_u, sigma, N_pu)
 
     # Step 2: Initialize cluster variables
@@ -375,7 +399,7 @@ def AS3FCM_prod(trial, X, Y_hat, mislabeling_percentage, gb=True):
     results = ""
     accuracies = []
     i = 0
-    activation = .6
+    activation = .8
     # All combinations of lambda1 and lambda2
     for lambda1 in lambda1_list:
         for lambda2 in lambda2_list:
@@ -409,7 +433,11 @@ def AS3FCM_prod(trial, X, Y_hat, mislabeling_percentage, gb=True):
         prefix = 'AS'
 
     # Write the results to a file - append mislabeling_percentage to the filename
-    with open(prefix + '_results_' + str(mislabeling_percentage) + '_T' + str(trial) + '.txt', 'w') as f:
+    #with open(prefix + '_results_' + str(mislabeling_percentage) + '_T' + str(trial) + '.txt', 'w') as f:
+    #    f.write(results)
+
+    # Write the results to a file - append mislabeling_percentage to the filename
+    with open(prefix +'_'+ label +'_R' + str(mislabeling_percentage) + '_T' + str(trial) + '.txt', 'w') as f:
         f.write(results)
 
     # Return the best accuracy
@@ -418,17 +446,26 @@ def AS3FCM_prod(trial, X, Y_hat, mislabeling_percentage, gb=True):
 
 if __name__ == '__main__':
     # Run it X times and get the average accuracy
-    num_runs = 20
+    num_runs = 2
     total_accuracy = 0
     gb = True
     percentages = [0, 5, 10, 15, 20, 25, 30]
+    #percentages = [30]
     result_str = ""
+    label = ""
+
+    total_accuracy = 0
+    label = ""
+
     for mislabeling_percentage in percentages:
         total_accuracy = 0
         for i in range(num_runs):
-            X, Y_hat = get_bupa(True)
-            #X, Y_hat = get_gauss50(500, 50)
-            total_accuracy += AS3FCM_prod(i, X, Y_hat, mislabeling_percentage, gb)
+            #X, Y_hat, label = Databases.get_bupa(True)
+            #X, Y_hat, label = Databases.get_bupa(False)
+            #X, Y_hat, label = Databases.get_wdbc(False)
+            X, Y_hat, label = Databases.get_gauss50x()
+            # X, Y_hat = get_gauss50(500, 50)
+            total_accuracy += X3FCM_prod(i, X, Y_hat, mislabeling_percentage, label, gb)
         average_accuracy = total_accuracy / num_runs
 
         if gb:
@@ -436,7 +473,7 @@ if __name__ == '__main__':
         else:
             prefix = 'AS'
 
-        result_str += f"[{prefix}-{mislabeling_percentage}] Average accuracy over {num_runs} runs: {average_accuracy}\n"
-        print(f"[{prefix}-{mislabeling_percentage}] Average accuracy over {num_runs} runs: {average_accuracy}")
+        result_str += f"[{label}-{prefix}-{mislabeling_percentage}] Average accuracy over {num_runs} runs: {average_accuracy}\n"
+        print(f"[{label}-{prefix}-{mislabeling_percentage}] Average accuracy over {num_runs} runs: {average_accuracy}")
     print(result_str)
-    print("Done")
+    print(f"Done")
