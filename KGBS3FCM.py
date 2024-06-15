@@ -19,6 +19,17 @@ E = 10e-10
 
 
 def initialize_F(X_l, Y_l, labels):
+    """
+    Initialize the matrix F, which indicates the membership of each labeled instance to the clusters.
+
+    Parameters:
+    X_l (array): Labeled data instances.
+    Y_l (array): Labels for the labeled instances.
+    labels (array): Unique labels in the dataset.
+
+    Returns:
+    F (array): Initialized matrix F.
+    """
     unique_labels = np.unique(labels)  # Unique labels
     c = len(unique_labels)  # Number of unique labels
     n = len(X_l)  # Number of labeled instances
@@ -36,12 +47,45 @@ def initialize_F(X_l, Y_l, labels):
 
 
 def update_u(X_l, X_un, V, W, U_prev_l, U_prev_un, s, lambda1, lambda2, F):
+    """
+    Update the membership matrix U for both labeled and unlabeled data.
+
+    Parameters:
+    X_l (array): Labeled data instances.
+    X_un (array): Unlabeled data instances.
+    V (array): Cluster centers.
+    W (array): Weight matrix.
+    U_prev_l (array): Previous membership matrix for labeled data.
+    U_prev_un (array): Previous membership matrix for unlabeled data.
+    s (array): Safety degrees for labeled data.
+    lambda1 (float): Regularization parameter.
+    lambda2 (float): Regularization parameter.
+    F (array): Initialized matrix F.
+
+    Returns:
+    U_l, U_un (arrays): Updated membership matrices for labeled and unlabeled data.
+    """
     U_l = update_U_labeled(X_l, V, W, U_prev_un, s, lambda1, lambda2, F)
     U_un = update_U_unlabeled(X_un, V, W, U_prev_l, s, lambda2, F)
     return U_l, U_un
 
 
 def update_U_unlabeled(X_u, V, W, U_prev_l, s, lambda2, F):
+    """
+    Update the membership matrix U for unlabeled data.
+
+    Parameters:
+    X_u (array): Unlabeled data instances.
+    V (array): Cluster centers.
+    W (array): Weight matrix.
+    U_prev_l (array): Previous membership matrix for labeled data.
+    s (array): Safety degrees for labeled data.
+    lambda2 (float): Regularization parameter.
+    F (array): Initialized matrix F.
+
+    Returns:
+    U_un (array): Updated membership matrix for unlabeled data.
+    """
     n, c = X_u.shape[0], V.shape[0]  # n data points, c clusters
     U_un = np.zeros((c, n))  # initialize the U matrix
 
@@ -69,6 +113,21 @@ def update_U_unlabeled(X_u, V, W, U_prev_l, s, lambda2, F):
 
 
 def update_v(X_l, X_un, U_l, U_un, s, lambda1, F):
+    """
+    Update the cluster centers V.
+
+    Parameters:
+    X_l (array): Labeled data instances.
+    X_un (array): Unlabeled data instances.
+    U_l (array): Membership matrix for labeled data.
+    U_un (array): Membership matrix for unlabeled data.
+    s (array): Safety degrees for labeled data.
+    lambda1 (float): Regularization parameter.
+    F (array): Initialized matrix F.
+
+    Returns:
+    V (array): Updated cluster centers.
+    """
     X = np.concatenate((X_l, X_un), axis=0)
     U = np.concatenate((U_l, U_un), axis=1)
     V = np.zeros((U.shape[0], X.shape[1]))  # Initialize the cluster centers matrix V
@@ -87,6 +146,22 @@ def update_v(X_l, X_un, U_l, U_un, s, lambda1, F):
 
 
 def update_s(X_l, W, U_l, U_un, V, F, lambda1, lambda2):
+    """
+    Update the safety degrees S for labeled data.
+
+    Parameters:
+    X_l (array): Labeled data instances.
+    W (array): Weight matrix.
+    U_l (array): Membership matrix for labeled data.
+    U_un (array): Membership matrix for unlabeled data.
+    V (array): Cluster centers.
+    F (array): Initialized matrix F.
+    lambda1 (float): Regularization parameter.
+    lambda2 (float): Regularization parameter.
+
+    Returns:
+    S (array): Updated safety degrees.
+    """
     n = U_l.shape[1]  # Number of data points
     # Computing Omega and Delta Array
     Omega = np.zeros(n)
@@ -100,6 +175,20 @@ def update_s(X_l, W, U_l, U_un, V, F, lambda1, lambda2):
 
 
 def compute_omega_k(k, W, U_un, U_l, V, lambda2):
+    """
+    Compute the Omega_k value for a given data point.
+
+    Parameters:
+    k (int): Index of the data point.
+    W (array): Weight matrix.
+    U_un (array): Membership matrix for unlabeled data.
+    U_l (array): Membership matrix for labeled data.
+    V (array): Cluster centers.
+    lambda2 (float): Regularization parameter.
+
+    Returns:
+    Omega_k (float): Computed Omega_k value.
+    """
     n, c = U_un.shape[1], V.shape[0]  # n data unlabeled points, c clusters
     sum2 = 0
     for r in range(n):
@@ -111,6 +200,23 @@ def compute_omega_k(k, W, U_un, U_l, V, lambda2):
 
 
 def compute_delta_k(k, X_l, W, U_un, U_l, V, F, lambda1, lambda2):
+    """
+    Compute the Delta_k value for a given data point.
+
+    Parameters:
+    k (int): Index of the data point.
+    X_l (array): Labeled data instances.
+    W (array): Weight matrix.
+    U_un (array): Membership matrix for unlabeled data.
+    U_l (array): Membership matrix for labeled data.
+    V (array): Cluster centers.
+    F (array): Initialized matrix F.
+    lambda1 (float): Regularization parameter.
+    lambda2 (float): Regularization parameter.
+
+    Returns:
+    Delta_k (float): Computed Delta_k value.
+    """
     n, c = U_un.shape[1], V.shape[0]  # n data unlabeled points, c clusters
     sum1 = 0
     for i in range(c):
@@ -135,6 +241,16 @@ def compute_delta_k(k, X_l, W, U_un, U_l, V, F, lambda1, lambda2):
 
 
 def solve_optimization_problem(omega, delta):
+    """
+    Solve the quadratic programming problem to optimize the safety degrees S.
+
+    Parameters:
+    omega (array): Omega values for the optimization problem.
+    delta (array): Delta values for the optimization problem.
+
+    Returns:
+    s_k_optimal (array): Optimized values for the safety degrees S.
+    """
     l = len(omega)  # Number of data points
     # Convert to cvxopt matrix format
     Q = 2 * cvxopt.matrix(np.diag(omega))  # Multiply by 2 because QP expects 0.5 * x^T * Q * x
@@ -160,6 +276,24 @@ def solve_optimization_problem(omega, delta):
 
 
 def compute_Ja(W, X_l, X_un, U_un, U_l, V, S, F, lambda1, lambda2):
+    """
+    Compute the objective function Ja.
+
+    Parameters:
+    W (array): Weight matrix.
+    X_l (array): Labeled data instances.
+    X_un (array): Unlabeled data instances.
+    U_un (array): Membership matrix for unlabeled data.
+    U_l (array): Membership matrix for labeled data.
+    V (array): Cluster centers.
+    S (array): Safety degrees for labeled data.
+    F (array): Initialized matrix F.
+    lambda1 (float): Regularization parameter.
+    lambda2 (float): Regularization parameter.
+
+    Returns:
+    Ja (float): Computed value of the objective function.
+    """
     U = np.concatenate((U_l, U_un), axis=1)
     X = np.concatenate((X_l, X_un), axis=0)
     n, c = U.shape[1], V.shape[0]  # n data points, c clusters
@@ -195,30 +329,48 @@ def compute_Ja(W, X_l, X_un, U_un, U_l, V, S, F, lambda1, lambda2):
 
 
 def compute_distances(data):
-    l_distances = []
-    for i in range(len(data)):
-        for j in range(i + 1, len(data)):
-            distance = sqrt(sum((data[i][k] - data[j][k]) ** 2 for k in range(len(data[i]))))
-            l_distances.append((distance, i, j))
-    return l_distances
+    """
+    Compute the pairwise distances between data points using a Euclidean metric.
 
+    Parameters:
+    data (array): Input data points.
 
-def compute_distances2(data):
+    Returns:
+    pairwise_distances (array): Pairwise distances between data points.
+    """
     pairwise_distances = pdist(data, metric='euclidean')
     return pairwise_distances
 
 
 def compute_average_distance(data):
-    # distances = compute_distances(data)
-    # total_distance = sum(dist[0] for dist in distances)
+    """
+    Compute the average pairwise distance between data points.
 
-    distances = compute_distances2(data)
+    Parameters:
+    data (array): Input data points.
+
+    Returns:
+    average_distance (float): Average pairwise distance.
+    """
+    distances = compute_distances(data)
     total_distance = sum(dist for dist in distances)
     average_distance = total_distance / len(distances)
     return average_distance
 
 
 def compute_weights(X_l, X_u, sigma, N_pu):
+    """
+    Compute the weight matrix W using a Gaussian kernel.
+
+    Parameters:
+    X_l (array): Labeled data instances.
+    X_u (array): Unlabeled data instances.
+    sigma (float): Standard deviation for the Gaussian kernel.
+    N_pu (array): Number of nearest neighbors for each labeled instance.
+
+    Returns:
+    W (array): Computed weight matrix.
+    """
     l, u = X_l.shape[0], X_u.shape[0]  # Number of labeled and unlabeled instances
     W = np.zeros((l, u))  # Initialize the weight matrix W
 
@@ -236,11 +388,30 @@ def compute_weights(X_l, X_u, sigma, N_pu):
 
 
 def get_predicted_labels(U):
+    """
+    Get the predicted labels from the membership matrix U.
+
+    Parameters:
+    U (array): Membership matrix.
+
+    Returns:
+    Y (array): Predicted labels.
+    """
     Y = np.argmax(U, axis=0)
     return Y
 
 
 def compute_CA(y, y_hat):
+    """
+    Compute the Classification Accuracy (CA).
+
+    Parameters:
+    y (array): True labels.
+    y_hat (array): Predicted labels.
+
+    Returns:
+    CA (float): Classification accuracy.
+    """
     n = len(y)  # Number of instances
     correct_predictions = np.equal(y, y_hat)  # Compare true and predicted labels
     print(f'Correct predictions:  {np.sum(correct_predictions)}')
@@ -249,9 +420,21 @@ def compute_CA(y, y_hat):
 
 
 def compute_safety_degrees(X_l, X_u, U_un, F, N_pu):
+    """
+    Compute the safety degrees S for labeled data based on local consistency.
+
+    Parameters:
+    X_l (array): Labeled data instances.
+    X_u (array): Unlabeled data instances.
+    U_un (array): Membership matrix for unlabeled data.
+    F (array): Initialized matrix F.
+    N_pu (array): Number of nearest neighbors for each labeled instance.
+
+    Returns:
+    S (array): Computed safety degrees.
+    """
     X = np.concatenate((X_l, X_u), axis=0)
     num_labeled = X_l.shape[0]
-    #num_unlabeled = X_u.shape[0]
     S = np.zeros(num_labeled)
 
     for i in range(num_labeled):
@@ -282,12 +465,22 @@ def compute_safety_degrees(X_l, X_u, U_un, F, N_pu):
 
 
 def compute_N_pu(X_l, k, min_value=0, max_value=math.inf):
+    """
+    Compute the number of nearest neighbors (N_pu) for each labeled instance based on average distance.
+
+    Parameters:
+    X_l (array): Labeled data instances.
+    k (int): Number of neighbors for KNN.
+    min_value (int): Minimum value for normalization.
+    max_value (int): Maximum value for normalization.
+
+    Returns:
+    N_pu2 (array): Computed number of nearest neighbors for each labeled instance.
+    """
     knn = KNeighborsClassifier(n_neighbors=k)
     knn.fit(X_l, np.zeros(X_l.shape[0]))
     distances, _ = knn.kneighbors(X_l)
     N_pu = np.round(np.mean(distances, axis=1)).astype(int)
-
-    #N_pu = np.clip(N_pu, min_value, max_value).astype(int)
 
     # COMPUTE N_pu based on the average distance (proxy for density estimation) of the labeled data
     normalized_k = min_value + (max_value - min_value) * (N_pu - np.min(N_pu)) / (np.max(N_pu) - np.min(N_pu))
@@ -297,12 +490,45 @@ def compute_N_pu(X_l, k, min_value=0, max_value=math.inf):
 
 
 def step(x, a):
+    """
+    Step function for activation.
+
+    Parameters:
+    x (float): Input value.
+    a (float): Activation threshold.
+
+    Returns:
+    (int): Step function result (1 if x > a, else 0).
+    """
     if x > a:
         return 1
     return 0
 
 
 def X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation_threshold, eta, max_iter, gb):
+    """
+    Main iteration loop for the X_S3FCM algorithm.
+
+    Parameters:
+    X_l (array): Labeled data instances.
+    X_u (array): Unlabeled data instances.
+    V (array): Cluster centers.
+    U_l (array): Membership matrix for labeled data.
+    U_un (array): Membership matrix for unlabeled data.
+    S (array): Safety degrees for labeled data.
+    F (array): Initialized matrix F.
+    N_pu (array): Number of nearest neighbors for each labeled instance.
+    W (array): Weight matrix.
+    lambda1 (float): Regularization parameter.
+    lambda2 (float): Regularization parameter.
+    activation_threshold (float): Threshold for the activation function.
+    eta (float): Convergence threshold.
+    max_iter (int): Maximum number of iterations.
+    gb (bool): Boolean flag indicating if graph-based updating is used.
+
+    Returns:
+    U (array): Final partition matrix.
+    """
     previous_Ja = 0
     # Main iteration loop
     t = 0
@@ -334,95 +560,38 @@ def X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation_
             break
 
         previous_Ja = current_Ja
-
-
     print("Stoppped at ITER: " + str(t) + " with AvgS: " + str(np.mean(S)))
 
     # Return the final partition matrix
     return np.concatenate((U_l, U_un), axis=1)
 
 
-def print_groups(Y_hat, Y_star, filename):
-    # Assuming Y_hat and Y_star are numpy arrays
-    combined = np.column_stack((Y_hat, Y_star))
-    # Save to a file
-    np.savetxt('output.txt', combined, fmt='%d')
-
-
-def X3FCM_prod(trial, X, Y_hat, mislabeling_percentage, label, gb=True):
-    # Shuffle the data, for distinct results
-    X_l, X_u, Y_l = split_data(X, Y_hat, 20, mislabeling_percentage)
-    # Example usage
-    lambda1_list = [.001, .01, .1, 1, 10, 100]
-    lambda2_list = [.001, .01, .1, 1, 10, 100]
-    eta = 0.0001
-    max_iter = 100
-
-    # Step 1: Constructing the Graph Initialize W if necessary
-    if gb:  # Number of nearest neighbors for each labeled instance
-        N_pu = compute_N_pu(X_l, 5, 10, sqrt(len(Y_hat)))
-
-    else:
-        N_pu = np.full(X_l.shape[0], 5)
-    print(f'N_pu: {N_pu}')
-
-    sigma = compute_average_distance(np.concatenate((X_l, X_u), axis=0))
-    W = compute_weights(X_l, X_u, sigma, N_pu)
-
-    # Step 2: Initialize cluster variables
-    V = initialize_V(X_l, Y_l, Y_hat)
-    # V = initialize_V_KM(X_l, Y_hat) # this is not helping much
-
-    U_l = initialize_ULabeled(V.shape[0], Y_l)
-    U_un = initialize_U_FCM(X_u, V, 2)
-    S = initialize_S(X_l.shape[0])
-    F = initialize_F(X_l, Y_l, Y_hat)
-
-    results = ""
-    accuracies = []
-    i = 0
-    activation = .6
-    # All combinations of lambda1 and lambda2
-    for lambda1 in lambda1_list:
-        for lambda2 in lambda2_list:
-            i += 1
-            print(f"[{i}]=====================================")
-            print(f"Running for lambda1: {lambda1}, lambda2: {lambda2}")
-            # Compute Performance Metrics
-            U_star = X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation, eta, max_iter, gb)
-            Y_star = get_predicted_labels(U_star)
-
-            # get accuracy for labeled data
-            # Y_star_l = get_predicted_labels(U_star[:, :X_l.shape[0]])
-            CA_l = compute_CA(Y_hat[:X_l.shape[0]], Y_star[:X_l.shape[0]])
-            print(f"Classification accuracy for labeled data for lambda1={lambda1}, lambda2={lambda2}: {CA_l}")
-
-            # get accuracy for unlabeled data
-            # Y_star_un = get_predicted_labels(U_star[:, X_l.shape[0]:])
-            CA_un = compute_CA(Y_hat[X_l.shape[0]:], Y_star[X_l.shape[0]:])
-            print(f"Classification accuracy for unlabeled data for lambda1={lambda1}, lambda2={lambda2}: {CA_un}")
-
-            # get overall accuracy
-            # Y_star = np.concatenate((Y_star_l, Y_star_un))
-            CA = compute_CA(Y_hat, Y_star)
-            accuracies.append(CA)
-            print(f"Classification accuracy for lambda1={lambda1}, lambda2={lambda2}: {CA}")
-            results += f"Classification accuracy for lambda1={lambda1}, lambda2={lambda2}: {CA}\n"
-
-    if gb:
-        prefix = 'GB'
-    else:
-        prefix = 'AS'
-
-    # Write the results to a file - append mislabeling_percentage to the filename
-    with open(prefix +'_'+ label +'_R' + str(mislabeling_percentage) + '_T' + str(trial) + '.txt', 'w') as f:
-        f.write(results)
-
-    # Return the best accuracy
-    return max(accuracies)
-
-
 def X3FCM_process_combination(lambda1, lambda2, X_l, X_u, V, U_l, U_un, S, F, N_pu, W, activation, eta, max_iter, gb, Y_hat):
+    """
+    Process a single combination of lambda1 and lambda2 for the X3FCM algorithm.
+
+    Parameters:
+    lambda1 (float): Regularization parameter.
+    lambda2 (float): Regularization parameter.
+    X_l (array): Labeled data instances.
+    X_u (array): Unlabeled data instances.
+    V (array): Cluster centers.
+    U_l (array): Membership matrix for labeled data.
+    U_un (array): Membership matrix for unlabeled data.
+    S (array): Safety degrees for labeled data.
+    F (array): Initialized matrix F.
+    N_pu (array): Number of nearest neighbors for each labeled instance.
+    W (array): Weight matrix.
+    activation (float): Activation threshold.
+    eta (float): Convergence threshold.
+    max_iter (int): Maximum number of iterations.
+    gb (bool): Boolean flag indicating if graph-based updating is used.
+    Y_hat (array): True labels.
+
+    Returns:
+    CA (float): Classification accuracy.
+    result_str (str): Result string containing the classification accuracy.
+    """
     # Compute Performance Metrics
     U_star = X_S3FCM(X_l, X_u, V, U_l, U_un, S, F, N_pu, W, lambda1, lambda2, activation, eta, max_iter, gb)
     Y_star = get_predicted_labels(U_star)
@@ -435,7 +604,21 @@ def X3FCM_process_combination(lambda1, lambda2, X_l, X_u, V, U_l, U_un, S, F, N_
     return CA, result_str
 
 
-def X3FCM_prod_parallell(trial, X, Y_hat, mislabeling_percentage, label, gb=True):
+def X3FCM_prod(trial, X, Y_hat, mislabeling_percentage, label, gb=True):
+    """
+    Run the X3FCM algorithm for a given trial and compute the classification accuracy.
+
+    Parameters:
+    trial (int): Trial number.
+    X (array): Input data instances.
+    Y_hat (array): True labels.
+    mislabeling_percentage (float): Percentage of mislabeling in the data.
+    label (str): Label of the dataset.
+    gb (bool): Boolean flag indicating if graph-based updating is used.
+
+    Returns:
+    max_accuracy (float): Maximum classification accuracy.
+    """
     # Shuffle the data, for distinct results
     X_l, X_u, Y_l = split_data(X, Y_hat, 20, mislabeling_percentage)
     # Example usage
@@ -446,9 +629,7 @@ def X3FCM_prod_parallell(trial, X, Y_hat, mislabeling_percentage, label, gb=True
 
     # Step 1: Constructing the Graph Initialize W if necessary
     if gb:  # Number of nearest neighbors for each labeled instance
-
         N_pu = compute_N_pu(X_l, 5, 10, sqrt(len(Y_hat)))
-
     else:
         N_pu = np.full(X_l.shape[0], 5)
     print(f'N_pu: {N_pu}')
@@ -472,7 +653,7 @@ def X3FCM_prod_parallell(trial, X, Y_hat, mislabeling_percentage, label, gb=True
     # Create a list of all combinations of lambda1 and lambda2
     combinations = [(lambda1, lambda2) for lambda1 in lambda1_list for lambda2 in lambda2_list]
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()//2) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
         futures = [
             executor.submit(X3FCM_process_combination, lambda1, lambda2, X_l, X_u, V, U_l, U_un, S, F, N_pu, W, activation,
                             eta, max_iter, gb, Y_hat) for lambda1, lambda2 in combinations]
@@ -494,10 +675,21 @@ def X3FCM_prod_parallell(trial, X, Y_hat, mislabeling_percentage, label, gb=True
 
 
 def process_percentage(db_name, mislabeling_percentage, num_runs, gb):
+    """
+    Process a given mislabeling percentage for a specified number of runs and compute the average accuracy.
+
+    Parameters:
+    db_name (str): Name of the database.
+    mislabeling_percentage (float): Percentage of mislabeling in the data.
+    num_runs (int): Number of runs to perform.
+    gb (bool): Boolean flag indicating if graph-based updating is used.
+
+    Returns:
+    result_str (str): Result string containing the average accuracy.
+    """
     total_accuracy = 0
     label = ""
     for i in range(num_runs):
-        #X, Y_hat, label = Databases.get_dermatology(True)
         X, Y_hat, label = Databases.select_database(db_name)
 
         print(f'[UPDATE] Running trial {i} for {label} with {mislabeling_percentage}% mislabeling...')
@@ -514,10 +706,17 @@ def process_percentage(db_name, mislabeling_percentage, num_runs, gb):
 
 
 def main(db_name, percentages, num_runs):
+    """
+    Main function to run the X3FCM algorithm for different mislabeling percentages and compute the average accuracy.
+
+    Parameters:
+    db_name (str): Name of the database.
+    percentages (list): List of mislabeling percentages to process.
+    num_runs (int): Number of runs to perform for each percentage.
+    """
     # Record the start time
     start_time = time.time()
     # Run it X times and get the average accuracy
-    total_accuracy = 0
     gb = True
 
     if percentages is None:
