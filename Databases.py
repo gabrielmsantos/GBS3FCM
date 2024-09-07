@@ -73,9 +73,9 @@ def get_waveform(shuffle_data=True):
     filepath_waveform = './data/waveform/waveform.data'
     X, Y_hat = extract_features_and_labels(filepath_waveform, shuffle_data)
 
-    #total = 1000
-    #X = X[:total]
-    #Y_hat = Y_hat[:total]
+    total = 1000
+    X = X[:total]
+    Y_hat = Y_hat[:total]
 
     # Standardize the data
     #mean = np.mean(X, axis=0)

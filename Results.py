@@ -36,8 +36,8 @@ def compute_average_max_accuracies(directory, prefix):
 
 
 # Example usage:
-db_name = 'wdbc'
-directory = f'./results/VNorm/{db_name}/'  # Replace with your directory path
+db_name = 'waveform'
+directory = f'./results/V3/{db_name}/'  # Replace with your directory path
 percentages = [0, 5, 10, 15, 20, 25, 30]
 for percentage in percentages:
     prefix = f"_R{percentage}_"
